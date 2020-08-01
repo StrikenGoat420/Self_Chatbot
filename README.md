@@ -10,7 +10,5 @@ How this program works:
 	4)The actual model and is in model.py and I'm still working on it.
 	
 
-Almost all of the functions I have used or thought would be useful are in preprocessing_utils.py, this includes a custom version of the 'fit_on_texts' and the 'texts_to_sequences' function which is present in keras, the difference between the ones I made and the one present in Keras is the Tokenizer. I used the TweetTokenizer from nltk as it was just more appropriate for my usecase. The most important/useful file for anybody is the preprocessing_utils.py
+Almost all of the functions I have used or thought would be useful are in preprocessing_utils.py, this includes a custom version of the 'fit_on_texts' and the 'texts_to_sequences' function which is present in keras, the difference between the ones I made and the one present in Keras is the Tokenizer. I used the TweetTokenizer from nltk as it was just more appropriate for my usecase.
 
-
-PS. I know the code is very sloppy, but this is just a small project of mine so bear with me
