@@ -1,9 +1,6 @@
 from preprocessing_utils import *
 from dict import dictionary
 
-
-'''CHANGE LINE 107 OF preprocessing_utils.py when running the whole code '''
-
 source_fileloc = r'/home/shubham/Python/project/chatbot/messages/inbox/dharanimathivanan_ncbmlzxsww'
 source_filenames = ['message_1.json', 'message_2.json', 'message_3.json', 'message_4.json', 'message_5.json', 'message_6.json', 'message_7.json']
 raw_messages = []
