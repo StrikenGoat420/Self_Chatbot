@@ -9,14 +9,10 @@ import numpy as np
     after preprocessing my inputs and outputs are in the following format
     <start_sentence> some message <end_sentence>, this is then converted to a list of ints according to the tokens_to_int dictionary
 '''
-'''
-    Have a total of 6036 messages and each message is padded to a maxlen of 223, the input shape therefore is (223,)
-'''
-print(len(padded_inputs))
-print(padded_inputs.shape)
+
+#Have a total of 6036 messages and each message is padded to a maxlen of 223, the input shape therefore is (223,)
+
 input_shape = (padded_inputs.shape[1], )
-#print(padded_inputs[0])
-#print(padded_outputs[0])
 
 def get_model(input_shape, output_shape, num_units):
     #input shape is a tuple, and so is output shape
@@ -34,7 +30,6 @@ def get_model(input_shape, output_shape, num_units):
     '''
     # TODO: take in decoder inputs which will be the same as the correct decoder output in the previous time step
             create an attention module which takes in the encoder states at each time step, and generates the context which will then be used as the inital state of the decoder
-            study up on attention
     '''
     decoder_inputs = Input(input_shape)
     decoder_embedding_layer = embedding_layer(decoder_inputs)
@@ -49,11 +44,11 @@ def get_model(input_shape, output_shape, num_units):
     #model = Model(inputs=[embedder_inputs], outputs=[embedding_layer])#this was used to check if the embedding layer worked properly or not
     return model
 
-'''
+
 model = get_model(input_shape, (220,120), 128)
 model.compile(optimizer = 'adam', loss='sparse_categorical_crossentropy', metrics = ['accuracy'])
 model.fit([padded_inputs, padded_outputs], [padded_outputs],epochs=100, validation_split=0.2)
-'''
+
 
 #ped = padded_inputs[:2]
 #predictions = model.predict(ped)
