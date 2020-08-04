@@ -1,60 +1,67 @@
-from pre_train import embedding_matrix, vocab_size, embedding_dimension, padded_inputs, padded_outputs
-import tensorflow.keras
+from pre_train import embedding_matrix, vocab_size, embedding_dimension, padded_inputs, padded_outputs, int_to_tokens, tokens_to_int
+import tensorflow as tf
+import tensorflow.keras as tfk
 from tensorflow.keras import Model
-from tensorflow.keras.layers import Dense, Flatten,Input, BatchNormalization, LSTM, Attention, Embedding, Bidirectional
+from tensorflow.keras.layers import Dense, Flatten,Input, BatchNormalization, LSTM, Attention, Embedding, Bidirectional, GRU, Concatenate
 import numpy as np
-#print(padded_inputs.shape)
+from sklearn.model_selection import train_test_split
 
 '''
     after preprocessing my inputs and outputs are in the following format
     <start_sentence> some message <end_sentence>, this is then converted to a list of ints according to the tokens_to_int dictionary
 '''
+class Encoder(tf.keras.Model):
+  def __init__(self, vocab_size, embedding_dim, enc_units, batch_sz, embedding_matrix):
+    super(Encoder, self).__init__()
+    self.batch_size = batch_sz
+    self.enc_units = enc_units
+    self.embeddings = tf.keras.layers.Embedding(vocab_size, embedding_dim, weights = [embedding_matrix], trainable = False)
+    self.gru = tf.keras.layers.GRU(self.enc_units, return_sequences=True, return_state=True, recurrent_initializer='glorot_uniform')
+    self.lstm = LSTM(self.enc_units, return_sequences=True, return_state=True, recurrent_initializer='glorot_uniform')
+    self.bidirectional_lstm = Bidirectional(self.lstm)
 
+  def call(self, inputs, hidden_state, mode):
+    '''if mode == 1 then program will use GRU, if mode == 2 then it will be vanilla lstm, if mode == 3 then it will use bidirectional_lstm'''
+    x = self.embeddings(inputs)
+    if mode == 1:
+        output, state = self.gru(x, initial_state = hidden_state)
+    if mode == 2:
+        output, state_c, state_h = self.lstm(x) #uncomment this when using lstm, not passing initial_state right now
+        state = [state_c, state_h] #uncomment when using lstm or bidirectional_lstm
+    if mode == 3:
+        output, forward_h, forward_c, backward_h, backward_c = self.bidirectional_lstm(x)
+        state_h = Concatenate()([forward_h, backward_h])
+        state_c = Concatenate()([forward_c, backward_c])
+        state = [state_c, state_h] #uncomment when using lstm or bidirectional_lstm
+    return output, state
+
+  def get_initial_hidden_state(self):
+    return tf.zeros((self.batch_size, self.enc_units))
+
+
+maxlen_input = maxlen_output = padded_inputs.shape[1]
 #Have a total of 6036 messages and each message is padded to a maxlen of 223, the input shape therefore is (223,)
+print(padded_inputs.shape, padded_outputs.shape)
 
-input_shape = (padded_inputs.shape[1], )
+# Creating training and validation sets using an 80-20 split
+x_train, x_val, y_train, y_val = train_test_split(padded_inputs, padded_outputs, test_size=0.2)
 
-def get_model(input_shape, output_shape, num_units):
-    #input shape is a tuple, and so is output shape
-    encoder_inputs = Input(input_shape)
-    embedding_layer = Embedding(vocab_size, embedding_dimension, weights = [embedding_matrix], input_length=input_shape[0], trainable = False)
+epochs = 200
+buffer_size = len(x_train)
+batch_size = 64
+steps_per_epoch = buffer_size//batch_size
+lstm_units = 1024 #embedding_dimension and vocab size are imported from pre_train
+dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(buffer_size)
+dataset = dataset.batch(batch_size, drop_remainder=True)
 
-    encoder_embedding_layer = embedding_layer(encoder_inputs)
-    normalized_inputs = BatchNormalization()(encoder_embedding_layer)
-    lstm_encoder_layer = LSTM(num_units, return_state=True, return_sequences=True)
-    encoder = Bidirectional(lstm_encoder_layer, merge_mode='concat')
-    encoder_outputs, state_h, state_c = lstm_encoder_layer(normalized_inputs)#return sequences is set to false cuz we dont need the sequence
-    #state_h, state_c = encoder(encoder_embedding_layer)#return sequences is set to false cuz we dont need the sequence
-    encoder_states = [state_h, state_c]
-    #works till here
-    '''
-    # TODO: take in decoder inputs which will be the same as the correct decoder output in the previous time step
-            create an attention module which takes in the encoder states at each time step, and generates the context which will then be used as the inital state of the decoder
-    '''
-    decoder_inputs = Input(input_shape)
-    decoder_embedding_layer = embedding_layer(decoder_inputs)
-    normalized_outputs = BatchNormalization()(decoder_embedding_layer)
-    decoder = LSTM(num_units, return_sequences=True, return_state=True)
-    decoder_outputs, _, _= decoder(normalized_outputs, initial_state = encoder_states)
-    decoder_dense = Dense(input_shape[0], activation='softmax')
-    normalized_outputs = BatchNormalization()(decoder_outputs)
-    decoder_outputs = decoder_dense(normalized_outputs)
+encoder = Encoder(vocab_size, embedding_dimension, lstm_units, batch_size, embedding_matrix)
 
-    model = Model(inputs=[encoder_inputs, decoder_inputs], outputs=[decoder_outputs])
-    #model = Model(inputs=[embedder_inputs], outputs=[embedding_layer])#this was used to check if the embedding layer worked properly or not
-    return model
-
-
-model = get_model(input_shape, (220,120), 128)
-model.compile(optimizer = 'adam', loss='sparse_categorical_crossentropy', metrics = ['accuracy'])
-model.fit([padded_inputs, padded_outputs], [padded_outputs],epochs=100, validation_split=0.2)
-
-
-#ped = padded_inputs[:2]
-#predictions = model.predict(ped)
-#print(predictions)
-
-
+example_input_batch, example_target_batch = next(iter(dataset))
+# sample input
+sample_hidden = encoder.get_initial_hidden_state()
+sample_output, sample_hidden = encoder(example_input_batch, sample_hidden, 1)
+print ('Encoder output shape: (batch size, sequence length, units) {}'.format(sample_output.shape))
+#print ('Encoder Hidden state shape: (batch size, units) {}'.format(sample_hidden.shape))
 
 
 '''
