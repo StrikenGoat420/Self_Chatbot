@@ -5,6 +5,8 @@ from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense, Flatten,Input, BatchNormalization, LSTM, Attention, Embedding, Bidirectional, GRU, Concatenate
 import numpy as np
 from sklearn.model_selection import train_test_split
+import time
+import os
 
 '''
     after preprocessing my inputs and outputs are in the following format
@@ -96,6 +98,39 @@ class Decoder(tf.keras.Model):
         x = self.fully_connected(output)
         return x, state, attention_weights
 
+def loss_function(real_output, predicted_output, loss_function_object):
+    mask = tf.math.logical_not(tf.math.equal(real_output,0)) #if the actual output is 0, we dont want it equalling to 0
+    loss = loss_function_object(real_output, predicted_output) #calculates the loss
+    mask = tf.cast(mask, dtype = loss.dtype) #changing the dtype of mask to the dtype of loss
+    loss *= mask #dunno why we are doing that
+
+    return tf.reduce_mean(loss)
+'''
+training_step
+1)pass input through the encoder, which will return the encoder_output and the encoder_hidden_state
+2)the encoder output and its hidden_state alongside the decoder input will then be fed into the decoder, which will then return the decoder_output, decoder_hidden_state and the attention_weights
+3)the decoder output is then passed into the loss function to calculate the loss
+4) to get the next output, pass the decoder hidden_state from the previous timestep alongside the decoder_inputs
+'''
+
+def train(inp, output, encoder_hidden_state, encoder, decoder, batch_size, optimizer, loss_function_object):
+    loss = 0
+    with tf.GradientTape() as tape:
+        #gradient tape allows us to calculate gradient wrt to some variables, we use it to calculate loss wrt the varibles
+        encoder_output, encoder_hidden_state = encoder(inp, encoder_hidden_state, 1)
+        decoder_hidden_state = encoder_hidden_state
+        decoder_input = tf.expand_dims([tokens_to_int['<start_sentence>']] * batch_size, 1) #what this line of code does is that it generates the <start> token for every training example in the batch. Explained properly below
+
+        for i in range(1, output.shape[1]):
+            predictions, decoder_hidden_state, _ = decoder(decoder_input, decoder_hidden_state, encoder_output, 1)
+            loss += loss_function(output[:, i], predictions, loss_function_object)
+            dec_input = tf.expand_dims(output[:, i], 1) #using teacher forcing, and setting decoder_input to the decoder_output we want
+    batch_loss = loss/int(output.shape[1])
+    variables = encoder.trainable_variables + decoder.trainable_variables
+    gradient = tape.gradient(loss, variables) #getting the gradients with respect to the variables ie. backprop
+    optimizer.apply_gradients(zip(gradients, variables))
+    return batch_loss
+
 maxlen_input = maxlen_output = padded_inputs.shape[1]
 #Have a total of 6036 messages and each message is padded to a maxlen of 223, the input shape therefore is (223,)
 print(padded_inputs.shape, padded_outputs.shape)
@@ -103,13 +138,42 @@ print(padded_inputs.shape, padded_outputs.shape)
 # Creating training and validation sets using an 80-20 split
 x_train, x_val, y_train, y_val = train_test_split(padded_inputs, padded_outputs, test_size=0.2)
 
-epochs = 200
+#embedding_dimension and vocab size are imported from pre_train
+EPOCHS = 200
 buffer_size = len(x_train)
 batch_size = 64
 steps_per_epoch = buffer_size//batch_size
-lstm_units = 1024 #embedding_dimension and vocab size are imported from pre_train
+print(f'buffer_size is {buffer_size} and steps_per_epoch is {steps_per_epoch}')
+lstm_units = 1024
 dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(buffer_size)
 dataset = dataset.batch(batch_size, drop_remainder=True)
+
+optimizer = tf.keras.optimizers.Adam()
+loss_function_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
+
+encoder = Encoder(vocab_size, embedding_dimension, lstm_units, batch_size, embedding_matrix)
+decoder = Decoder(vocab_size, embedding_dimension, embedding_matrix, lstm_units, batch_size)
+
+checkpoint_dir = './training_checkpoints'
+checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+checkpoint = tf.train.Checkpoint(optimizer=optimizer, encoder=encoder, decoder=decoder)
+print(dataset, x_train.shape, x_val.shape)
+
+for epoch in range(EPOCHS):
+    start = time.time()
+    encoder_hidden = encoder.get_initial_hidden_state()
+    total_loss = 0
+    for (batch, (inp, output)) in enumerate(dataset.take(steps_per_epoch)):
+        batch_loss = train(inp, output, encoder_hidden, encoder, decoder, batch_size, optimizer, loss_function_object)
+        total_loss += batch_loss
+        if batch % 100 == 0:
+            print('Epoch {} Batch {} Loss {:.4f}'.format(epoch + 1, batch, batch_loss.numpy()))
+    # saving (checkpoint) the model every 20 epochs
+    if (epoch + 1) % 20 == 0:
+        checkpoint.save(file_prefix = checkpoint_prefix)
+    print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss / steps_per_epoch))
+    print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
+
 
 '''
 explanation for tf.reduce_sum
@@ -124,11 +188,24 @@ similarly if we select axis = 1, the summation will happen row wise, thus the ou
 we can also reduce the dimension alongside both the axis
 ie. tf.reduce_sum(x, [0,1]) here the result will be equal to 6 (ie. 1+1+1+1+1+1)
 '''
-
 '''
-have padded_inputs, padded_outputs
-# TODO: 1)feed in the padded inputs into the embedding layers
-        2)get the embedding representation, then feed in that representation in a bidirectional lstm
-        3)feed in the outputs of the bidirectional lstm into the attention module to get context
-        4)feed in the context into the post attention unidirectional lstm module to get the outputs
+decoder_input = tf.expand_dims(tokens_to_int['<start>'] * batch_size, 1) explained:
+tokens_to_int['<start>'] gives us the token number of the <start> token, let it be 1
+so [tokens_to_int['<start>']] will return the following ----> [1]
+
+we need a start token for every example in the batch so we do
+--> [tokens_to_int['<start>']] * batch_size
+so if our batch size == 5, our code will return the following --> [1,1,1,1,1]
+
+what we want is something like [1]
+                               [1]
+                               [1]
+                               [1]
+                               [1]
+ie. a start token for each example, hence we use the tf.expand_dims([tokens_to_int['<start>']] * batch_size, 1) which returns what we want
+
+continuing on to teacher forcing:
+suppose we want the output like <start>I am fine, wbu?<end>
+once we feed in the <start> token, we need to update the decoder_input so that it equals to the actual output we want from it
+ie. to get "I" as the output, we need to input "I" as well if we are to use the teacher_forcing method
 '''
