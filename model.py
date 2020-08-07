@@ -1,15 +1,16 @@
 from pre_train import embedding_matrix, vocab_size, embedding_dimension, padded_inputs, padded_outputs, int_to_tokens, tokens_to_int
 import tensorflow as tf
-import tensorflow.keras as tfk
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense, Flatten,Input, BatchNormalization, LSTM, Attention, Embedding, Bidirectional, GRU, Concatenate
 import numpy as np
 from sklearn.model_selection import train_test_split
 import time
 import os
-
 '''
-    after preprocessing my inputs and outputs are in the following format
+# TODO: Individual components are working, but getting resourceexhaustederror when training. Have to find a solution for that
+'''
+'''
+    after preprocessing, inputs and outputs are in the following format
     <start_sentence> some message <end_sentence>, this is then converted to a list of ints according to the tokens_to_int dictionary
     use https://www.tensorflow.org/tutorials/text/nmt_with_attention as reference
 '''
@@ -128,51 +129,8 @@ def train(inp, output, encoder_hidden_state, encoder, decoder, batch_size, optim
     batch_loss = loss/int(output.shape[1])
     variables = encoder.trainable_variables + decoder.trainable_variables
     gradient = tape.gradient(loss, variables) #getting the gradients with respect to the variables ie. backprop
-    optimizer.apply_gradients(zip(gradients, variables))
+    optimizer.apply_gradients(zip(gradient, variables))
     return batch_loss
-
-maxlen_input = maxlen_output = padded_inputs.shape[1]
-#Have a total of 6036 messages and each message is padded to a maxlen of 223, the input shape therefore is (223,)
-print(padded_inputs.shape, padded_outputs.shape)
-
-# Creating training and validation sets using an 80-20 split
-x_train, x_val, y_train, y_val = train_test_split(padded_inputs, padded_outputs, test_size=0.2)
-
-#embedding_dimension and vocab size are imported from pre_train
-EPOCHS = 200
-buffer_size = len(x_train)
-batch_size = 64
-steps_per_epoch = buffer_size//batch_size
-print(f'buffer_size is {buffer_size} and steps_per_epoch is {steps_per_epoch}')
-lstm_units = 1024
-dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(buffer_size)
-dataset = dataset.batch(batch_size, drop_remainder=True)
-
-optimizer = tf.keras.optimizers.Adam()
-loss_function_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
-
-encoder = Encoder(vocab_size, embedding_dimension, lstm_units, batch_size, embedding_matrix)
-decoder = Decoder(vocab_size, embedding_dimension, embedding_matrix, lstm_units, batch_size)
-
-checkpoint_dir = './training_checkpoints'
-checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-checkpoint = tf.train.Checkpoint(optimizer=optimizer, encoder=encoder, decoder=decoder)
-print(dataset, x_train.shape, x_val.shape)
-
-for epoch in range(EPOCHS):
-    start = time.time()
-    encoder_hidden = encoder.get_initial_hidden_state()
-    total_loss = 0
-    for (batch, (inp, output)) in enumerate(dataset.take(steps_per_epoch)):
-        batch_loss = train(inp, output, encoder_hidden, encoder, decoder, batch_size, optimizer, loss_function_object)
-        total_loss += batch_loss
-        if batch % 100 == 0:
-            print('Epoch {} Batch {} Loss {:.4f}'.format(epoch + 1, batch, batch_loss.numpy()))
-    # saving (checkpoint) the model every 20 epochs
-    if (epoch + 1) % 20 == 0:
-        checkpoint.save(file_prefix = checkpoint_prefix)
-    print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss / steps_per_epoch))
-    print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
 
 
 '''
