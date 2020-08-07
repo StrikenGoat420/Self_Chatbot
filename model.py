@@ -1,4 +1,3 @@
-from pre_train import embedding_matrix, vocab_size, embedding_dimension, padded_inputs, padded_outputs, int_to_tokens, tokens_to_int
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense, Flatten,Input, BatchNormalization, LSTM, Attention, Embedding, Bidirectional, GRU, Concatenate
@@ -114,7 +113,7 @@ training_step
 4) to get the next output, pass the decoder hidden_state from the previous timestep alongside the decoder_inputs
 '''
 
-def train(inp, output, encoder_hidden_state, encoder, decoder, batch_size, optimizer, loss_function_object):
+def train(inp, output, encoder_hidden_state, encoder, decoder, batch_size, optimizer, loss_function_object, tokens_to_int):
     loss = 0
     with tf.GradientTape() as tape:
         #gradient tape allows us to calculate gradient wrt to some variables, we use it to calculate loss wrt the varibles

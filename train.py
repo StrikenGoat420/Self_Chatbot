@@ -107,7 +107,7 @@ for epoch in range(EPOCHS):
     encoder_hidden = encoder.get_initial_hidden_state()
     total_loss = 0
     for (batch, (inp, output)) in enumerate(dataset.take(steps_per_epoch)):
-        batch_loss = train(inp, output, encoder_hidden, encoder, decoder, batch_size, optimizer, loss_function_object)
+        batch_loss = train(inp, output, encoder_hidden, encoder, decoder, batch_size, optimizer, loss_function_object, tokens_to_int)
         total_loss += batch_loss
         if batch % 100 == 0:
             print('Epoch {} Batch {} Loss {:.4f}'.format(epoch + 1, batch, batch_loss.numpy()))
